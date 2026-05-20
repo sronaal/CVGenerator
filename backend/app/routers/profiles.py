@@ -24,7 +24,7 @@ async def create_profile(
     user: User = Depends(get_current_user),
 ):
     existing = await db.execute(select(Profile).where(Profile.user_id == user.id))
-    if existing.scalar_one_or_none():
+    if existing.unique().scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Profile already exists")
 
     profile = Profile(user_id=user.id, **body.model_dump())
@@ -39,7 +39,7 @@ async def get_my_profile(
     user: User = Depends(get_current_user),
 ):
     result = await db.execute(select(Profile).where(Profile.user_id == user.id))
-    profile = result.scalar_one_or_none()
+    profile = result.unique().scalar_one_or_none()
     if not profile:
         profile = Profile(user_id=user.id)
         db.add(profile)
@@ -70,7 +70,7 @@ async def update_profile(
     user: User = Depends(get_current_user),
 ):
     result = await db.execute(select(Profile).where(Profile.user_id == user.id))
-    profile = result.scalar_one_or_none()
+    profile = result.unique().scalar_one_or_none()
     if not profile:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
 
