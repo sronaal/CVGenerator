@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.0-flash-lite"
 
+    cors_origins: list[str] = ["http://localhost:3000"]
+
     log_level: str = "INFO"
     app_env: str = "development"
 
