@@ -1,4 +1,5 @@
 from sqlalchemy import Column, String, ForeignKey, Integer
+from sqlalchemy.orm import relationship
 from app.models.base import Base, TimestampMixin
 
 
@@ -10,3 +11,5 @@ class Skill(Base, TimestampMixin):
     category = Column(String(50), default="hard")
     proficiency_level = Column(Integer, default=3)
     years_of_experience = Column(Integer)
+
+    profile = relationship("Profile", back_populates="skills")

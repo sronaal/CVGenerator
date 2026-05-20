@@ -1,4 +1,5 @@
 from sqlalchemy import Column, String, ForeignKey
+from sqlalchemy.orm import relationship
 from app.models.base import Base, TimestampMixin
 
 
@@ -8,3 +9,5 @@ class Language(Base, TimestampMixin):
     profile_id = Column(String, ForeignKey("profiles.id"), nullable=False)
     language_name = Column(String(100), nullable=False)
     proficiency = Column(String(50), default="intermediate")
+
+    profile = relationship("Profile", back_populates="languages")

@@ -1,4 +1,5 @@
 from sqlalchemy import Column, String, ForeignKey, Date
+from sqlalchemy.orm import relationship
 from app.models.base import Base, TimestampMixin
 
 
@@ -11,3 +12,5 @@ class Certification(Base, TimestampMixin):
     issue_date = Column(Date)
     expiry_date = Column(Date)
     credential_url = Column(String(500))
+
+    profile = relationship("Profile", back_populates="certifications")

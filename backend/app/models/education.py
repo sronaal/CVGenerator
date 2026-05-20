@@ -1,5 +1,6 @@
-from sqlalchemy import Column, String, ForeignKey, Text, Date
+from sqlalchemy import Column, String, ForeignKey, Date
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import relationship
 from app.models.base import Base, TimestampMixin
 
 
@@ -14,3 +15,5 @@ class Education(Base, TimestampMixin):
     start_date = Column(Date)
     end_date = Column(Date)
     honors = Column(JSONB, default=list)
+
+    profile = relationship("Profile", back_populates="education_entries")

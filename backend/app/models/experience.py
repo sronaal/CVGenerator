@@ -16,3 +16,5 @@ class Experience(Base, TimestampMixin):
     is_current = Column(Boolean, default=False)
     bullets = Column(JSONB, default=list)
     raw_description = Column(Text)
+
+    profile = relationship("Profile", back_populates="experiences")

@@ -1,5 +1,6 @@
 from sqlalchemy import Column, String, ForeignKey, Text, Boolean, Date
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import relationship
 from app.models.base import Base, TimestampMixin
 
 
@@ -15,3 +16,5 @@ class Project(Base, TimestampMixin):
     end_date = Column(Date)
     is_current = Column(Boolean, default=False)
     bullets = Column(JSONB, default=list)
+
+    profile = relationship("Profile", back_populates="projects")
