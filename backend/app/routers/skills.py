@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/v1/profiles/me/skills", tags=["skills"])
 
 async def _get_profile(db: AsyncSession, user: User) -> Profile:
     result = await db.execute(select(Profile).where(Profile.user_id == user.id))
-    profile = result.unique().scalar_one_or_none()
+    profile = result.scalar_one_or_none()
     if not profile:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Profile not found")
     return profile
