@@ -42,6 +42,20 @@ async def generate_cv(
     job_parsed: ParsedJobOffer | None = None
     job_offer = None
     if body.job_offer_id:
+        existing_cv = await db.execute(
+            select(GeneratedCV).where(
+                GeneratedCV.profile_id == profile.id,
+                GeneratedCV.job_offer_id == body.job_offer_id,
+            ).order_by(GeneratedCV.created_at.desc())
+        )
+        if existing_cv := existing_cv.scalar_one_or_none():
+            return {
+                "cv_id": existing_cv.id,
+                "file_path": existing_cv.file_path,
+                "matching_score": existing_cv.matching_score,
+                "message": "CV already generated",
+            }
+
         result = await db.execute(
             select(JobOffer).where(
                 JobOffer.id == body.job_offer_id,

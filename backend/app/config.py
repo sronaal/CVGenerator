@@ -16,6 +16,9 @@ class Settings(BaseSettings):
 
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.0-flash-lite"
+    gemini_max_tokens: int = 2048
+
+    ai_cache_ttl: int = 86400  # seconds (24h)
 
     cors_origins: list[str] = ["http://localhost:3000"]
 

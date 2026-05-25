@@ -28,6 +28,17 @@ async def parse_job_offer(
     user: User = Depends(get_current_user),
 ):
     profile = await _get_profile(db, user)
+
+    existing = await db.execute(
+        select(JobOffer).where(
+            JobOffer.profile_id == profile.id,
+            JobOffer.raw_text == body.raw_text,
+        )
+    )
+    existing_offer = existing.scalar_one_or_none()
+    if existing_offer:
+        return existing_offer
+
     parsed: ParsedJobOffer = await parse_job_offer_with_ai(body.raw_text)
 
     job_offer = JobOffer(
