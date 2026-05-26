@@ -209,13 +209,9 @@ class DOCXGenerator:
     def _build_education(self, entries) -> list:
         lines = []
         for edu in entries:
-            inst_parts = [edu.institution]
-            if edu.location:
-                inst_parts.append(edu.location)
             lines.append({
                 "runs": [
-                    {"text": inst_parts[0], "bold": True},
-                    {"text": f"\t{' '.join(inst_parts[1:])}" if len(inst_parts) > 1 else ""},
+                    {"text": edu.institution, "bold": True},
                 ]
             })
 
