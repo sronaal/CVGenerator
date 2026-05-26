@@ -1,9 +1,7 @@
-import copy
 from datetime import datetime
-from docx import Document
-from docx.shared import Pt, Inches, RGBColor
-from docx.enum.text import WD_ALIGN_PARAGRAPH
 from typing import Optional
+from docx import Document
+from docx.shared import Pt
 
 from app.models.profile import Profile
 from app.schemas.job_offer import ParsedJobOffer
@@ -21,213 +19,290 @@ class DOCXGenerator:
     ):
         doc = Document(self.template_path)
 
-        self._clear_template_content(doc)
         self._fill_header(doc, profile)
-        self._fill_education(doc, profile)
-        self._fill_experience(doc, profile)
-        self._fill_projects(doc, profile)
-        self._fill_skills(doc, profile, job_parsed)
-        self._fill_languages(doc, profile)
+
+        sections = self._find_sections(doc)
+        for heading_para, next_para in reversed(sections):
+            heading_text = heading_para.text.strip().lower()
+
+            if "education" in heading_text and "leadership" not in heading_text:
+                self._replace_section(doc, heading_para, next_para, profile.education_entries, self._build_education)
+            elif heading_text == "experience":
+                self._replace_section(doc, heading_para, next_para, profile.experiences, self._build_experience)
+            elif "leadership" in heading_text or "activities" in heading_text:
+                self._replace_section(doc, heading_para, next_para, profile.projects if profile.projects else None, self._build_project)
+            elif "skills" in heading_text:
+                self._replace_skills_section(doc, heading_para, next_para, profile, job_parsed)
+
+        for heading_para, _ in sections:
+            heading_text = heading_para.text.strip().lower()
+            if "leadership" in heading_text or "activities" in heading_text:
+                if profile.projects:
+                    heading_para.clear()
+                    run = heading_para.add_run("Projects")
+                    run.bold = True
+                else:
+                    heading_para._element.getparent().remove(heading_para._element)
+            elif "skills" in heading_text:
+                heading_para.clear()
+                run = heading_para.add_run("Skills")
+                run.bold = True
 
         doc.save(output_path)
 
-    def _clear_template_content(self, doc: Document):
-        paragraphs_to_clear = []
-        for para in doc.paragraphs:
-            text = para.text.strip().lower()
+    def _find_sections(self, doc: Document) -> list[tuple]:
+        heading_map = {
+            "education": "Education",
+            "experience": "Experience",
+            "leadership": "Leadership & Activities",
+            "activities": "Leadership & Activities",
+            "skills": "Skills & Interests",
+        }
+        skip_keywords = [
+            "beginning with", "begin each", "quantify", "do not use",
+            "with your next", "this section", "if this section",
+            "technical:", "language:", "laboratory:", "interests:",
+            "relevant coursework", "study abroad", "high school", "harvard university",
+        ]
+        heading_paras = []
+        for p in doc.paragraphs:
+            text = p.text.strip().lower()
             if not text:
                 continue
-            if any(marker in text for marker in [
-                "harvard university",
-                "study abroad",
-                "high school",
-                "note:",
-                "beginning with your most recent",
-                "begin each line with an action verb",
-                "quantify where possible",
-                "do not use personal pronouns",
-                "with your next-most recent",
-                "this section can be formatted similarly",
-                "if this section is more relevant",
-                "technical: list computer software",
-                "language: list foreign languages",
-                "laboratory: list scientific",
-                "interests: list activities",
-                "experience",
-                "leadership & activities",
-                "skills & interests",
-            ]):
-                paragraphs_to_clear.append(para)
+            matched_keyword = None
+            for kw in heading_map:
+                if kw in text:
+                    matched_keyword = kw
+                    break
+            if not matched_keyword:
+                continue
+            if any(sk in text for sk in skip_keywords):
+                continue
+            heading_paras.append(p)
 
-        for para in paragraphs_to_clear:
-            para.clear()
+        sections = []
+        for idx, h in enumerate(heading_paras):
+            n = heading_paras[idx + 1] if idx + 1 < len(heading_paras) else None
+            sections.append((h, n))
+        return sections
 
-    def _add_paragraph_with_style(self, doc, text: str, style_name: str):
-        para = doc.add_paragraph()
-        para.style = doc.styles[style_name]
-        run = para.add_run(text)
-        return para, run
+    def _para_index(self, doc: Document, para) -> int:
+        el = para._element
+        for i, p in enumerate(doc.paragraphs):
+            if p._element is el:
+                return i
+        return -1
 
-    def _add_heading(self, doc, text: str):
-        para = doc.add_paragraph()
-        para.style = doc.styles["Heading 1"]
-        run = para.add_run(text)
-        run.bold = True
-        return para
-
-    def _add_normal_line(self, doc, text: str, bold_prefix: str = ""):
-        para = doc.add_paragraph()
-        para.style = doc.styles["Normal"]
-        if bold_prefix:
-            run = para.add_run(bold_prefix)
-            run.bold = True
-            run = para.add_run(f"\t{text}")
+    def _remove_between(self, doc: Document, start_para, end_para):
+        start_i = self._para_index(doc, start_para) + 1
+        if end_para:
+            end_i = self._para_index(doc, end_para) - 1
         else:
-            run = para.add_run(text)
-        return para
+            end_i = len(doc.paragraphs) - 1
+        if end_i < start_i:
+            return
+        total = len(doc.paragraphs)
+        for i in range(end_i, start_i - 1, -1):
+            if i < total:
+                doc.paragraphs[i]._element.getparent().remove(doc.paragraphs[i]._element)
 
-    def _add_body_line(self, doc, text: str):
-        para = doc.add_paragraph()
-        para.style = doc.styles["Body Text"]
-        run = para.add_run(text)
-        return para
+    def _replace_section(self, doc: Document, heading_para, next_para, entries, build_fn):
+        has_content = entries is not None
+        self._remove_between(doc, heading_para, next_para)
 
-    def _add_bullet(self, doc, text: str):
-        para = doc.add_paragraph()
-        para.style = doc.styles["List Paragraph"]
-        run = para.add_run(text)
-        return para
-
-    def _fill_header(self, doc: Document, profile: Profile):
-        name_para = doc.paragraphs[0]
-        name_para.clear()
-        run = name_para.add_run(profile.full_name or "Your Name")
-        run.bold = True
-        run.font.size = Pt(16)
-
-        contact_line = []
-        if profile.location:
-            contact_line.append(profile.location)
-        if profile.email:
-            contact_line.append(profile.email)
-        if profile.phone:
-            contact_line.append(profile.phone)
-
-        contact_text = " • ".join(contact_line)
-        if profile.linkedin_url:
-            contact_text += f" • {profile.linkedin_url}"
-        if profile.portfolio_url:
-            contact_text += f" • {profile.portfolio_url}"
-
-        if len(doc.paragraphs) > 1:
-            contact_para = doc.paragraphs[1]
-            contact_para.clear()
-            run = contact_para.add_run(contact_text)
-            run.font.size = Pt(9)
-
-    def _fill_education(self, doc: Document, profile: Profile):
-        if not profile.education_entries:
+        if not has_content:
             return
 
-        self._add_heading(doc, "Education")
+        if next_para:
+            ref_para = next_para
+        else:
+            ref_para = doc.add_paragraph()
 
-        for edu in profile.education_entries:
-            self._add_normal_line(doc, edu.institution, bold_prefix="")
+        lines = build_fn(entries)
+        for line_data in lines:
+            para = ref_para.insert_paragraph_before()
+            self._apply_line(doc, para, line_data)
 
-            details_parts = []
+        if not next_para:
+            ref_para._element.getparent().remove(ref_para._element)
+
+    def _apply_line(self, doc: Document, para, line_data):
+        if isinstance(line_data, str):
+            run = para.add_run(line_data)
+            run.font.name = "Calibri"
+        elif isinstance(line_data, dict):
+            for segment in line_data.get("runs", []):
+                run = para.add_run(segment.get("text", ""))
+                run.bold = segment.get("bold", False)
+                run.font.name = "Calibri"
+            if line_data.get("bullet", False):
+                try:
+                    para.style = doc.styles["List Paragraph"]
+                except Exception:
+                    pass
+
+    def _replace_skills_section(self, doc: Document, heading_para, next_para, profile: Profile, job_parsed: Optional[ParsedJobOffer]):
+        self._remove_between(doc, heading_para, next_para)
+
+        if not profile.skills and not profile.languages:
+            return
+
+        if next_para:
+            ref_para = next_para
+        else:
+            ref_para = doc.add_paragraph()
+
+        hard_skills = [s for s in profile.skills if s.category in ("hard", "technical")]
+        soft_skills = [s for s in profile.skills if s.category == "soft"]
+
+        items = []
+        if hard_skills:
+            items.append(("Technical: ", ", ".join(s.name for s in hard_skills)))
+        if soft_skills:
+            items.append(("Professional: ", ", ".join(s.name for s in soft_skills)))
+        if profile.languages:
+            lang_texts = [f"{l.language_name} ({l.proficiency})" for l in profile.languages]
+            items.append(("Languages: ", ", ".join(lang_texts)))
+
+        for prefix, text in items:
+            para = ref_para.insert_paragraph_before()
+            run = para.add_run(prefix)
+            run.bold = True
+            run.font.name = "Calibri"
+            run = para.add_run(text)
+            run.font.name = "Calibri"
+
+        if not next_para:
+            ref_para._element.getparent().remove(ref_para._element)
+
+    def _fill_header(self, doc: Document, profile: Profile):
+        if len(doc.paragraphs) > 1:
+            name_para = doc.paragraphs[1]
+            name_para.clear()
+            run = name_para.add_run(profile.full_name or "Your Name")
+            run.bold = True
+            run.font.size = Pt(16)
+            run.font.name = "Calibri"
+
+        contact_parts = []
+        if profile.location:
+            contact_parts.append(profile.location)
+        if profile.email:
+            contact_parts.append(profile.email)
+        if profile.phone:
+            contact_parts.append(profile.phone)
+        contact_text = " | ".join(contact_parts)
+        if profile.linkedin_url:
+            contact_text += f" | {profile.linkedin_url}"
+        if profile.portfolio_url:
+            contact_text += f" | {profile.portfolio_url}"
+
+        for p in doc.paragraphs:
+            pt = p.text.strip()
+            if pt and ("street" in pt.lower() or "youremail" in pt.lower() or "@" in pt.lower() and "center" not in pt.lower()):
+                p.clear()
+                run = p.add_run(contact_text)
+                run.font.size = Pt(9)
+                run.font.name = "Calibri"
+                break
+
+    def _build_education(self, entries) -> list:
+        lines = []
+        for edu in entries:
+            inst_parts = [edu.institution]
+            if edu.location:
+                inst_parts.append(edu.location)
+            lines.append({
+                "runs": [
+                    {"text": inst_parts[0], "bold": True},
+                    {"text": f"\t{' '.join(inst_parts[1:])}" if len(inst_parts) > 1 else ""},
+                ]
+            })
+
+            details = []
             if edu.degree:
-                details_parts.append(edu.degree)
+                details.append(edu.degree)
             if edu.field_of_study:
-                details_parts.append(edu.field_of_study)
+                details.append(edu.field_of_study)
             if edu.gpa:
-                details_parts.append(f"GPA: {edu.gpa}")
+                details.append(f"GPA: {edu.gpa}")
 
-            details_text = ", ".join(details_parts)
-            if edu.start_date or edu.end_date:
-                date_parts = []
-                if edu.start_date:
-                    date_parts.append(edu.start_date.strftime("%b %Y"))
-                if edu.end_date:
-                    date_parts.append(edu.end_date.strftime("%b %Y"))
-                details_text += f"\t{' – '.join(date_parts)}"
+            date_str = ""
+            if edu.start_date:
+                date_str = self._fmt_date(edu.start_date)
+            if edu.end_date:
+                date_str += f" – {self._fmt_date(edu.end_date)}"
 
-            if details_text:
-                self._add_body_line(doc, details_text)
+            detail_text = ", ".join(details)
+            lines.append({
+                "runs": [
+                    {"text": detail_text, "bold": False},
+                    {"text": f"\t{date_str}"},
+                ]
+            })
 
             if edu.honors:
-                self._add_body_line(doc, f"Honors: {', '.join(edu.honors)}")
+                lines.append(f"Honors: {', '.join(edu.honors)}")
 
-    def _fill_experience(self, doc: Document, profile: Profile):
+        return lines
+
+    def _build_experience(self, entries) -> list:
         sorted_exps = sorted(
-            profile.experiences,
+            entries,
             key=lambda e: e.start_date or datetime.min.date(),
             reverse=True,
         )
-
-        if not sorted_exps:
-            return
-
-        self._add_heading(doc, "Experience")
-
+        lines = []
         for exp in sorted_exps:
-            self._add_normal_line(doc, exp.location or "", bold_prefix=exp.company)
+            lines.append({
+                "runs": [
+                    {"text": exp.company, "bold": True},
+                    {"text": f"\t{exp.location or ''}"},
+                ]
+            })
 
             date_str = ""
             if exp.start_date:
-                date_str = exp.start_date.strftime("%b %Y")
+                date_str = self._fmt_date(exp.start_date)
             date_str += " – "
             if exp.is_current:
                 date_str += "Present"
             elif exp.end_date:
-                date_str += exp.end_date.strftime("%b %Y")
+                date_str += self._fmt_date(exp.end_date)
 
-            self._add_normal_line(doc, date_str, bold_prefix=exp.title)
+            lines.append({
+                "runs": [
+                    {"text": exp.title, "bold": True},
+                    {"text": f"\t{date_str}"},
+                ]
+            })
 
-            if exp.bullets:
-                for bullet in exp.bullets:
-                    self._add_bullet(doc, bullet)
+            for bullet in (exp.bullets or []):
+                lines.append({"runs": [{"text": bullet, "bold": False}], "bullet": True})
 
-    def _fill_projects(self, doc: Document, profile: Profile):
-        if not profile.projects:
-            return
+        return lines
 
-        self._add_heading(doc, "Projects")
-
-        for project in profile.projects:
-            self._add_normal_line(doc, "", bold_prefix=project.name)
+    def _build_project(self, entries) -> list:
+        lines = []
+        for project in entries:
+            lines.append({
+                "runs": [
+                    {"text": project.name, "bold": True},
+                ]
+            })
 
             if project.technologies:
-                self._add_body_line(doc, f"Technologies: {', '.join(project.technologies)}")
+                lines.append(f"Technologies: {', '.join(project.technologies)}")
 
-            if project.bullets:
-                for bullet in project.bullets:
-                    self._add_bullet(doc, bullet)
-            elif project.description:
-                self._add_body_line(doc, project.description)
+            for bullet in (project.bullets or []):
+                lines.append({"runs": [{"text": bullet, "bold": False}], "bullet": True})
 
-    def _fill_skills(self, doc: Document, profile: Profile, job_parsed: Optional[ParsedJobOffer]):
-        if not profile.skills:
-            return
+            if not project.bullets and project.description:
+                lines.append(project.description)
 
-        self._add_heading(doc, "Skills")
+        return lines
 
-        hard_skills = [s for s in profile.skills if s.category == "hard"]
-        soft_skills_list = [s for s in profile.skills if s.category == "soft"]
-        technical_skills = [s for s in profile.skills if s.category == "technical"]
-
-        all_technical = technical_skills + hard_skills
-
-        if all_technical:
-            skill_names = [s.name for s in all_technical]
-            self._add_body_line(doc, f"Technical: {', '.join(skill_names)}")
-
-        if soft_skills_list:
-            skill_names = [s.name for s in soft_skills_list]
-            self._add_body_line(doc, f"Professional: {', '.join(skill_names)}")
-
-    def _fill_languages(self, doc: Document, profile: Profile):
-        if not profile.languages:
-            return
-
-        lang_entries = [f"{l.language_name} ({l.proficiency})" for l in profile.languages]
-        self._add_body_line(doc, f"Languages: {', '.join(lang_entries)}")
+    def _fmt_date(self, d) -> str:
+        if hasattr(d, "strftime"):
+            return d.strftime("%b %Y")
+        return str(d)
