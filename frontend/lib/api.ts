@@ -200,7 +200,20 @@ export const api = {
           body: JSON.stringify({ job_offer_id: jobOfferId }),
         }
       ),
-    download: (cvId: string) => `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/v1/generate/${cvId}/download`,
+    download: async (cvId: string) => {
+      const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${base}/api/v1/generate/${cvId}/download`, {
+        headers: getHeaders(),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: "Download failed" }));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, "_blank");
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    },
     history: () => request<{ id: string; matching_score: number | null; created_at: string; file_path: string }[]>("/api/v1/generate/history"),
   },
 };

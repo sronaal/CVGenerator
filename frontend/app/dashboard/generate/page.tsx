@@ -203,14 +203,12 @@ export default function GeneratePage() {
                     {cv.matching_score !== null && ` • Match: ${cv.matching_score}%`}
                   </p>
                 </div>
-                <a
-                  href={api.generate.download(cv.id)}
+                <button
+                  onClick={() => api.generate.download(cv.id).catch(console.error)}
                   className="btn-primary text-sm flex items-center gap-1"
-                  target="_blank"
-                  rel="noopener noreferrer"
                 >
                   <Download className="w-4 h-4" /> Download
-                </a>
+                </button>
               </div>
             ))}
           </div>
