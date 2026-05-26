@@ -3,18 +3,25 @@ from app.services.ai_provider import get_ai_provider
 from app.services.cache import AICache
 from app.utils.text_cleaner import clean_text
 
-JOB_PARSER_SYSTEM = """You are an expert job offer analyzer. Your task is to extract structured information from job descriptions.
+JOB_PARSER_SYSTEM = """You are an expert job offer analyzer. Extract structured information from job descriptions.
 
 Rules:
 - Extract only what is explicitly stated or clearly implied
-- Identify hard skills (technical skills, tools, frameworks, languages)
-- Identify soft skills (communication, leadership, teamwork, etc.)
-- Determine seniority level (entry, mid, senior, lead, principal, etc.)
-- Extract keywords that ATS systems would look for
-- List main responsibilities
-- Separate required skills from optional/nice-to-have skills
+- Never invent information
 
-Respond with valid JSON matching the exact schema provided."""
+Return valid JSON matching this exact schema:
+{
+  "title": "Software Engineer",
+  "company": "Google",
+  "seniority": "senior",
+  "required_skills": ["Python", "React"],
+  "optional_skills": ["AWS"],
+  "keywords": ["microservices", "distributed systems"],
+  "responsibilities": ["Build APIs", "Lead team"],
+  "soft_skills": ["communication", "leadership"]
+}
+
+Use empty string "" for missing text fields, empty list [] for missing array fields."""
 
 
 async def parse_job_offer_with_ai(raw_text: str) -> ParsedJobOffer:

@@ -2,13 +2,14 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { Briefcase, Trash2, Eye, Loader2 } from "lucide-react";
+import { Briefcase, Trash2, Eye, Loader2, AlertCircle } from "lucide-react";
 
 export default function JobOffersPage() {
   const [jobOffers, setJobOffers] = useState<any[]>([]);
   const [rawText, setRawText] = useState("");
   const [loading, setLoading] = useState(false);
   const [parsing, setParsing] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     loadJobOffers();
@@ -19,19 +20,20 @@ export default function JobOffersPage() {
       const offers = await api.jobOffers.list();
       setJobOffers(offers);
     } catch (err) {
-      console.error(err);
+      setError(err instanceof Error ? err.message : "Failed to load job offers");
     }
   };
 
   const handleParse = async () => {
     if (!rawText.trim()) return;
     setParsing(true);
+    setError("");
     try {
       await api.jobOffers.parse(rawText);
       setRawText("");
       loadJobOffers();
     } catch (err) {
-      console.error(err);
+      setError(err instanceof Error ? err.message : "Failed to parse job offer");
     } finally {
       setParsing(false);
     }
@@ -45,6 +47,13 @@ export default function JobOffersPage() {
   return (
     <div className="space-y-8">
       <h1 className="text-2xl font-bold text-gray-900">Job Offers</h1>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-center gap-2">
+          <AlertCircle className="w-5 h-5 shrink-0" />
+          {error}
+        </div>
+      )}
 
       <div className="card">
         <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">

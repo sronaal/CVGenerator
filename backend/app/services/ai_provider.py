@@ -11,11 +11,10 @@ logger = structlog.get_logger()
 
 
 def compress_input(text: str, max_line_length: int = 500) -> str:
-    text = re.sub(r"\s+", " ", text)
     lines = text.split("\n")
     compressed = []
     for line in lines:
-        line = line.strip()
+        line = re.sub(r"[ \t]+", " ", line).strip()
         if len(line) > max_line_length:
             line = line[:max_line_length] + "..."
         if line:
@@ -58,17 +57,12 @@ class OllamaProvider(AIProvider):
         self.model = settings.ollama_model
 
     async def chat(self, system: str, user: str, json_mode: bool = False) -> str:
-        cleaned_user = compress_input(user)
-        cached = await self.cache.get_prompt(system, cleaned_user)
-        if cached is not None:
-            logger.info("ai_cache_hit", provider="ollama")
-            return cached
-
+        user = compress_input(user)
         payload = {
             "model": self.model,
             "messages": [
                 {"role": "system", "content": system},
-                {"role": "user", "content": cleaned_user},
+                {"role": "user", "content": user},
             ],
             "stream": False,
             "options": {"temperature": 0.1},
@@ -80,10 +74,7 @@ class OllamaProvider(AIProvider):
             resp = await client.post(f"{self.base_url}/api/chat", json=payload)
             resp.raise_for_status()
             data = resp.json()
-            result = data["message"]["content"]
-
-        await self.cache.set_prompt(system, cleaned_user, result)
-        return result
+            return data["message"]["content"]
 
 
 class GeminiProvider(AIProvider):
@@ -95,13 +86,8 @@ class GeminiProvider(AIProvider):
         self.max_tokens = settings.gemini_max_tokens
 
     async def chat(self, system: str, user: str, json_mode: bool = False) -> str:
-        cleaned_user = compress_input(user)
-        cached = await self.cache.get_prompt(system, cleaned_user)
-        if cached is not None:
-            logger.info("ai_cache_hit", provider="gemini")
-            return cached
-
-        prompt = f"{system}\n\n---\n\n{cleaned_user}"
+        user = compress_input(user)
+        prompt = f"{system}\n\n---\n\n{user}"
         if json_mode:
             prompt += "\n\nRespond with valid JSON only. No markdown, no explanation."
 
@@ -112,10 +98,7 @@ class GeminiProvider(AIProvider):
                 "temperature": 0.1,
             },
         )
-        result = response.text
-
-        await self.cache.set_prompt(system, cleaned_user, result)
-        return result
+        return response.text
 
 
 def get_ai_provider() -> AIProvider:
